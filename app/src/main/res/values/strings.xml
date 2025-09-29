@@ -1,0 +1,44 @@
+<resources>
+    <!-- App Name -->
+    <string name="app_name">Telemetry Lab</string>
+
+    
+    <!-- Notification Channel -->
+    <string name="notification_channel_name">Telemetry Service</string>
+    <string name="notification_channel_description">Background service for processing telemetry data</string>
+    
+    <!-- Notification -->
+    <string name="notification_title">Telemetry Processing</string>
+    <string name="notification_content">Processing telemetry data in the background</string>
+    
+    <!-- UI Text -->
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="compute_load">Compute Load</string>
+    <string name="frame_latency">Frame Latency: %1$.1f ms</string>
+    <string name="avg_latency">Avg Latency: %1$.1f ms</string>
+    <string name="jank_percentage">Jank: %1$.1f%%</string>
+    <string name="jank_count">Jank Frames: %d</string>
+    <string name="power_save_mode">Power-save mode</string>
+    <string name="current_frame">Frame #%d</string>
+    
+    <!-- Error Messages -->
+    <string name="error_service_running">Service is already running</string>
+    <string name="error_service_not_running">Service is not running</string>
+    
+    <!-- Empty States -->
+    <string name="no_data_available">No data available. Start processing to see metrics.</string>
+
+
+    <string name="telemetry_running">Telemetry is running</string>
+    
+    <!-- Telemetry Controls -->
+    <string name="telemetry_controls">Telemetry Controls</string>
+    <string name="start_telemetry">Start Telemetry</string>
+    <string name="stop_telemetry">Stop Telemetry</string>
+    
+    <!-- Performance Metrics -->
+    <string name="performance_metrics">Performance Metrics</string>
+    <string name="recent_frames">Recent Frames</string>
+    <string name="background">Background</string>
+</resources>
