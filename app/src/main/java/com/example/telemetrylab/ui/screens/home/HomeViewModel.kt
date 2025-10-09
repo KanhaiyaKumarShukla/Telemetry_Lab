@@ -3,19 +3,18 @@ package com.example.telemetrylab.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.telemetrylab.domain.model.TelemetryMetrics
-import com.example.telemetrylab.domain.model.TelemetryState
 import com.example.telemetrylab.domain.usecase.ObserveMetricsUseCase
 import com.example.telemetrylab.domain.usecase.ObserveTelemetryStateUseCase
 import com.example.telemetrylab.domain.usecase.StartTelemetryUseCase
 import com.example.telemetrylab.domain.usecase.StopTelemetryUseCase
 import com.example.telemetrylab.domain.usecase.UpdateComputeLoadUseCase
-import com.example.telemetrylab.service.TelemetryService
+import com.example.telemetrylab.manger.BatteryManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -26,7 +25,8 @@ class HomeViewModel @Inject constructor(
     private val stopTelemetryUseCase: StopTelemetryUseCase,
     private val updateComputeLoadUseCase: UpdateComputeLoadUseCase,
     private val observeTelemetryStateUseCase: ObserveTelemetryStateUseCase,
-    private val observeMetricsUseCase: ObserveMetricsUseCase
+    private val observeMetricsUseCase: ObserveMetricsUseCase,
+    private val batteryManager: BatteryManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -35,13 +35,12 @@ class HomeViewModel @Inject constructor(
     init {
         observeTelemetryState()
         observeMetrics()
+        observeBatteryState()
     }
-
 
     fun toggleTelemetry() {
         viewModelScope.launch {
-            val currentState = _uiState.value.isRunning
-            if (currentState) {
+            if (_uiState.value.isRunning) {
                 stopTelemetry()
             } else {
                 startTelemetry()
@@ -49,17 +48,18 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-
     fun updateComputeLoad(computeLoad: Int) {
         viewModelScope.launch {
-            updateComputeLoadUseCase(computeLoad)
+            val adaptedLoad = batteryManager.getAdaptedComputeLoad(computeLoad)
+            updateComputeLoadUseCase(adaptedLoad)
         }
     }
 
     private fun startTelemetry() {
         viewModelScope.launch {
             val computeLoad = _uiState.value.computeLoad
-            startTelemetryUseCase(computeLoad)
+            val adaptedLoad = batteryManager.getAdaptedComputeLoad(computeLoad)
+            startTelemetryUseCase(adaptedLoad)
         }
     }
 
@@ -72,28 +72,46 @@ class HomeViewModel @Inject constructor(
     private fun observeTelemetryState() {
         observeTelemetryStateUseCase()
             .onEach { state ->
-                _uiState.value = _uiState.value.copy(
-                    isRunning = state.isRunning,
-                    isPowerSaveMode = state.isPowerSaveMode,
-                    currentFrameId = state.currentFrameId,
-                    currentFrameLatencyMs = state.currentFrameLatencyMs,
-                    computeLoad = state.currentComputeLoad
-                )
+                _uiState.update { current ->
+                    current.copy(
+                        isRunning = state.isRunning,
+                        isPowerSaveMode = state.isPowerSaveMode,
+                        currentFrameId = state.currentFrameId,
+                        currentFrameLatencyMs = state.currentFrameLatencyMs,
+                        computeLoad = state.currentComputeLoad
+                    )
+                }
             }
             .launchIn(viewModelScope)
     }
 
     private fun observeMetrics() {
-        observeMetricsUseCase()
+        observeMetricsUseCase(windowSize = 600) // 30 seconds at 20Hz
             .onEach { metrics ->
-                _uiState.value = _uiState.value.copy(
-                    averageLatencyMs = metrics.averageLatencyMs,
-                    jankPercentage = metrics.jankPercentage,
-                    jankCount = metrics.jankCount,
-                    frameCount = metrics.frameCount,
-                    minLatencyMs = metrics.minLatencyMs,
-                    maxLatencyMs = metrics.maxLatencyMs
-                )
+                _uiState.update { current ->
+                    current.copy(
+                        averageLatencyMs = metrics.averageLatencyMs,
+                        jankPercentage = metrics.jankPercentage,
+                        jankCount = metrics.jankCount,
+                        frameCount = metrics.frameCount,
+                        minLatencyMs = metrics.minLatencyMs,
+                        maxLatencyMs = metrics.maxLatencyMs
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    private fun observeBatteryState() {
+        batteryManager.isPowerSaveMode
+            .onEach { isPowerSaveMode ->
+                _uiState.update { current ->
+                    current.copy(isPowerSaveMode = isPowerSaveMode)
+                }
+                // Update compute load if running
+                if (_uiState.value.isRunning) {
+                    updateComputeLoad(_uiState.value.computeLoad)
+                }
             }
             .launchIn(viewModelScope)
     }

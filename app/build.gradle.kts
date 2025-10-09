@@ -101,6 +101,7 @@ dependencies {
     // Material 3
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.material3.windowsizeclass)
     
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
@@ -150,4 +151,8 @@ dependencies {
     
     // Macrobenchmark (optional)
     androidTestImplementation(libs.androidx.benchmark.macro.junit4)
+    androidTestImplementation("androidx.profileinstaller:profileinstaller:1.3.1")
+
+    // Accompanist
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
 }

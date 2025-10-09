@@ -1,34 +1,64 @@
 package com.example.telemetrylab.ui.screens.home
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.telemetrylab.R
 import com.example.telemetrylab.service.TelemetryService
-import com.example.telemetrylab.ui.components.InfoCard
-import kotlin.math.roundToInt
+import com.example.telemetrylab.ui.components.*
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+
+// Elevation constants
+private val cardElevation = 4.dp
+private val smallElevation = 2.dp
+private val largeElevation = 8.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState(initial = HomeUiState())
     val context = LocalContext.current
-    
+    val uiState by viewModel.uiState.collectAsState()
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    val systemUiController = rememberSystemUiController()
+    val isDarkTheme = isSystemInDarkTheme()
+    val statusBarColor = if (isDarkTheme) {
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f)
+    } else {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+    }
+
+    SideEffect {
+        systemUiController.setStatusBarColor(
+            color = statusBarColor,
+            darkIcons = !isDarkTheme
+        )
+    }
+
+    // Handle service lifecycle
     LaunchedEffect(uiState.isRunning) {
         if (uiState.isRunning) {
             TelemetryService.start(context, uiState.computeLoad)
@@ -36,191 +66,245 @@ fun HomeScreen(
             TelemetryService.stop(context)
         }
     }
-    
-    LaunchedEffect(uiState.computeLoad) {
+
+    // Auto-scroll to show latest metrics
+    LaunchedEffect(uiState.currentFrameId) {
         if (uiState.isRunning) {
-            TelemetryService.updateComputeLoad(context, uiState.computeLoad)
+            delay(100)
+            coroutineScope.launch {
+                scrollState.animateScrollToItem(0)
+            }
         }
     }
-    
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        if (uiState.isPowerSaveMode) {
-            Surface(
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = stringResource(R.string.power_save_mode),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(8.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+
+    // Handle system UI
+
+    // Main container with top app bar
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "Telemetry Lab",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                modifier = Modifier.shadow(smallElevation)
+            )
         }
-        
+    ) { innerPadding ->
+        // Main content
         LazyColumn(
+            state = scrollState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
-                Card {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
+            // Power Save Banner
+            if (uiState.isPowerSaveMode) {
+                item {
+                    AnimatedVisibility(
+                        visible = uiState.isPowerSaveMode,
+                        enter = slideInVertically() + fadeIn(),
+                        exit = slideOutVertically() + fadeOut()
                     ) {
-                        Text(
-                            text = stringResource(R.string.telemetry_controls),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        
-                        // Start/Stop button
-                        Button(
-                            onClick = { viewModel.toggleTelemetry() },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (uiState.isRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                contentColor = if (uiState.isRunning) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            val buttonText = if (uiState.isRunning) {
-                                stringResource(R.string.stop_telemetry)
-                            } else {
-                                stringResource(R.string.start_telemetry)
-                            }
-                            Text(buttonText)
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Text(
-                            text = "${stringResource(R.string.compute_load)}: ${uiState.computeLoad}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Slider(
-                            value = uiState.computeLoad.toFloat(),
-                            onValueChange = { viewModel.updateComputeLoad(it.roundToInt()) },
-                            valueRange = 1f..5f,
-                            steps = 4,
-                            enabled = !uiState.isRunning,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        PowerSaveBanner()
                     }
                 }
-            }
-            
-            item {
-                Text(
-                    text = stringResource(R.string.performance_metrics),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-            
-            item {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    InfoCard(
-                        title = stringResource(R.string.frame_latency, uiState.currentFrameLatencyMs),
-                        value = "${uiState.currentFrameLatencyMs.toInt()} ms",
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    InfoCard(
-                        title = stringResource(R.string.avg_latency, uiState.averageLatencyMs),
-                        value = "${uiState.averageLatencyMs.toInt()} ms",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-            
-            item {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    InfoCard(
-                        title = stringResource(R.string.jank_percentage, uiState.jankPercentage),
-                        value = "${uiState.jankPercentage.toInt()}%",
-                        valueColor = when {
-                            uiState.jankPercentage > 10 -> MaterialTheme.colorScheme.error
-                            uiState.jankPercentage > 5 -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.primary
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    InfoCard(
-                        title = stringResource(R.string.jank_count, uiState.jankCount),
-                        value = uiState.jankCount.toString(),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-            
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = stringResource(R.string.current_frame, uiState.currentFrameId),
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        
-                        if (uiState.isRunning) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
-                        }
-                    }
-                }
-            }
-            
-            item {
-                Text(
-                    text = stringResource(R.string.recent_frames),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
             }
 
+            // Main Control Card
             item {
-                val frameHistory = remember { List(10) { it * 10L } }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.Bottom,
+                AnimatedVisibility(
+                    visible = true,
+                    enter = slideInVertically { it / 2 } + fadeIn()
+                ) {
+                    ControlCard(
+                        isRunning = uiState.isRunning,
+                        computeLoad = uiState.computeLoad,
+                        onToggleTelemetry = { viewModel.toggleTelemetry() },
+                        onComputeLoadChange = { viewModel.updateComputeLoad(it) },
+                        isPowerSaveMode = uiState.isPowerSaveMode,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                    )
+                }
+            }
+
+            // Real-time Metrics Grid
+            item {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(100.dp)
+                        .padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    frameHistory.forEach { value ->
-                        val height = (value % 100).toFloat() / 100f
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(height)
-                                .background(
-                                    color = if (value > 50) MaterialTheme.colorScheme.error 
-                                           else MaterialTheme.colorScheme.primary,
-    shape = MaterialTheme.shapes.small
+                    Text(
+                        text = "Performance Dashboard",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        ),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    // First Row - Core Metrics
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        MetricCard(
+                            title = "Frame Latency",
+                            value = "${uiState.currentFrameLatencyMs.toInt()}",
+                            unit = "ms",
+                            subtitle = "Current",
+                            icon = Icons.Outlined.Speed,
+                            gradient = Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
                                 )
+                            ),
+                            modifier = Modifier.weight(1f),
+                            isAnimated = uiState.isRunning
+                        )
+
+                        MetricCard(
+                            title = "Avg Latency",
+                            value = "${uiState.averageLatencyMs.toInt()}",
+                            unit = "ms",
+                            subtitle = "30s Average",
+                            icon = Icons.Outlined.Timeline,
+                            gradient = Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.secondaryContainer,
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                                )
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Second Row - Performance Indicators
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        MetricCard(
+                            title = "Jank Rate",
+                            value = "${uiState.jankPercentage.toInt()}",
+                            unit = "%",
+                            subtitle = "> 16.67ms",
+                            icon = Icons.Outlined.Warning,
+                            gradient = Brush.verticalGradient(
+                                colors = listOf(
+                                    when {
+                                        uiState.jankPercentage > 10 -> MaterialTheme.colorScheme.errorContainer
+                                        uiState.jankPercentage > 5 -> MaterialTheme.colorScheme.tertiaryContainer
+                                        else -> MaterialTheme.colorScheme.primaryContainer
+                                    },
+                                    when {
+                                        uiState.jankPercentage > 10 -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+                                        uiState.jankPercentage > 5 -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.8f)
+                                        else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                                    }
+                                )
+                            ),
+                            valueColor = when {
+                                uiState.jankPercentage > 10 -> MaterialTheme.colorScheme.error
+                                uiState.jankPercentage > 5 -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        MetricCard(
+                            title = "Frame Count",
+                            value = uiState.currentFrameId.toString(),
+                            unit = "",
+                            subtitle = "Total Processed",
+                            icon = Icons.Outlined.FilterFrames,
+                            gradient = Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.tertiaryContainer,
+                                    MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.8f)
+                                )
+                            ),
+                            modifier = Modifier.weight(1f),
+                            isLoading = uiState.isRunning
+                        )
+                    }
+                }
+            }
+
+            // Jank Warning
+            if (uiState.jankPercentage > 5) {
+                item {
+                    AnimatedVisibility(
+                        visible = uiState.jankPercentage > 5,
+                        enter = slideInVertically() + fadeIn(),
+                        exit = slideOutVertically() + fadeOut()
+                    ) {
+                        JankWarningCard(
+                            jankPercentage = uiState.jankPercentage,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp)
+                        )
+                    }
+                }
+            }
+
+            // Performance Visualization
+            item {
+                AnimatedVisibility(
+                    visible = true,
+                    enter = slideInVertically { it / 2 } + fadeIn()
+                ) {
+                    PerformanceVisualization(
+                        isRunning = uiState.isRunning,
+                        frameRate = if (uiState.isPowerSaveMode) 10 else 20,
+                        computeLoad = uiState.computeLoad,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                    )
+                }
+            }
+
+            // Recent Frames List
+            if (uiState.isRunning) {
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .shadow(
+                                elevation = largeElevation,
+                                shape = RoundedCornerShape(16.dp),
+                                clip = true
+                            ),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        RecentFramesList(
+                            frameCount = uiState.currentFrameId,
+                            averageLatency = uiState.averageLatencyMs,
+                            modifier = Modifier
+                                .fillMaxWidth()
                         )
                     }
                 }
@@ -228,3 +312,7 @@ fun HomeScreen(
         }
     }
 }
+
+
+
+

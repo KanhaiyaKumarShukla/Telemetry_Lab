@@ -32,6 +32,6 @@ class MainActivity : ComponentActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        stopService(TelemetryService.createStopIntent(this))
+        TelemetryService.stop(this)
     }
 }
